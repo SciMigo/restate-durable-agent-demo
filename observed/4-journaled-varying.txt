@@ -1,0 +1,25 @@
+== agent: journaled   model answers: varying
+16:04:41  model stub on :8765, MODEL_ANSWERS=varying
+invoked WeatherAgent/run   inv_1exMup8JOBwU2zuoD2n0EVfstWXcCnyQbX
+16:04:41  model call #1  ->  {"tool": "get_weather", "city": "Berlin"}
+16:04:41  weather call #1  get_weather(Berlin)
+kill -9 agent (pid 1800589)
+agent restarted (pid 1801004); Restate retries and replays the journal
+  attempt 3, last failure RT0010 (service unreachable)
+  attempt 4, last failure RT0010 (service unreachable)
+16:04:47  model call #2  ->  {"answer": "Berlin right now: 18\u00b0C and cloudy."}
+
+status: completed   model calls: 2   weather calls: 1
+result: Berlin right now: 18°C and cloudy.
+journal:
+   0  Command: Input
+   1  Command: Run  call model
+   2  Notification: Run
+   3  Command: Run  get_weather
+   4  Notification: Run
+   5  Command: Sleep  rate-limit pause
+   6  Notification: Sleep
+   7  Command: Run  call model
+   8  Notification: Run
+   9  Command: Output
+UI: http://127.0.0.1:19070/ui/   invocation inv_1exMup8JOBwU2zuoD2n0EVfstWXcCnyQbX

@@ -1,0 +1,24 @@
+== agent: naive   model answers: varying
+16:04:17  model stub on :8765, MODEL_ANSWERS=varying
+invoked WeatherAgent/run   inv_1cF1B9OB7hVa7cybq2osKc8mSDosPTYRIx
+16:04:17  model call #1  ->  {"tool": "get_weather", "city": "Berlin"}
+16:04:17  weather call #1  get_weather(Berlin)
+kill -9 agent (pid 1799161)
+agent restarted (pid 1799192); Restate retries and replays the journal
+  attempt 3, last failure RT0010 (service unreachable)
+16:04:21  model call #2  ->  {"answer": "Berlin is probably mild this time of year."}
+  attempt 4, last failure RT0016 (journal mismatch)
+16:04:23  model call #3  ->  {"tool": "get_weather", "city": "Berlin"}
+  attempt 5, last failure RT0016 (journal mismatch)
+16:04:23  model call #4  ->  {"answer": "Berlin right now: 18\u00b0C and cloudy."}
+
+status: completed   model calls: 4   weather calls: 1
+result: Berlin right now: 18°C and cloudy.
+journal:
+   0  Command: Input
+   1  Command: Run  get_weather
+   2  Notification: Run
+   3  Command: Sleep  rate-limit pause
+   4  Notification: Sleep
+   5  Command: Output
+UI: http://127.0.0.1:19070/ui/   invocation inv_1cF1B9OB7hVa7cybq2osKc8mSDosPTYRIx

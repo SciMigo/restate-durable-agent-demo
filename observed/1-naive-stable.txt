@@ -1,0 +1,22 @@
+== agent: naive   model answers: stable
+16:07:07  model stub on :8765, MODEL_ANSWERS=stable
+invoked WeatherAgent/run   inv_11UJzoEzDOEo6F9iKqwIUpkO9lblvyitjr
+16:07:08  model call #1  ->  {"tool": "get_weather", "city": "Berlin"}
+16:07:08  weather call #1  get_weather(Berlin)
+kill -9 agent (pid 1810632)
+agent restarted (pid 1810834); Restate retries and replays the journal
+  attempt 3, last failure RT0010 (service unreachable)
+16:07:12  model call #2  ->  {"tool": "get_weather", "city": "Berlin"}
+  attempt 4, last failure RT0010 (service unreachable)
+16:07:14  model call #3  ->  {"answer": "Berlin right now: 18\u00b0C and cloudy."}
+
+status: completed   model calls: 3   weather calls: 1
+result: Berlin right now: 18°C and cloudy.
+journal:
+   0  Command: Input
+   1  Command: Run  get_weather
+   2  Notification: Run
+   3  Command: Sleep  rate-limit pause
+   4  Notification: Sleep
+   5  Command: Output
+UI: http://127.0.0.1:19070/ui/   invocation inv_11UJzoEzDOEo6F9iKqwIUpkO9lblvyitjr

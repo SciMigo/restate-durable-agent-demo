@@ -1,0 +1,10 @@
+services:
+  restate:
+    image: docker.restate.dev/restatedev/restate:1.7.10
+    command: ["--node-name=restate-1"]
+    ports:
+      - "18080:8080"   # ingress: invoke handlers
+      - "19070:9070"   # admin API and the Restate UI
+    extra_hosts:
+      # The agent runs on the host; this is how the server reaches it.
+      - "host.docker.internal:host-gateway"

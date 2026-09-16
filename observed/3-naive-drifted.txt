@@ -1,0 +1,55 @@
+== agent: naive   model answers: drifted
+16:06:18  model stub on :8765, MODEL_ANSWERS=drifted
+invoked WeatherAgent/run   inv_16wT0XazNWHk3QxIhqQyiO3aqI2PJP59TM
+16:06:18  model call #1  ->  {"tool": "get_weather", "city": "Berlin"}
+16:06:18  weather call #1  get_weather(Berlin)
+kill -9 agent (pid 1807391)
+agent restarted (pid 1807463); Restate retries and replays the journal
+  attempt 3, last failure RT0010 (service unreachable)
+16:06:22  model call #2  ->  {"answer": "Berlin is probably mild this time of year."}
+  attempt 4, last failure RT0016 (journal mismatch)
+16:06:24  model call #3  ->  {"answer": "Berlin is probably mild this time of year."}
+  attempt 5, last failure RT0016 (journal mismatch)
+16:06:27  model call #4  ->  {"answer": "Berlin is probably mild this time of year."}
+  attempt 6, last failure RT0016 (journal mismatch)
+16:06:29  model call #5  ->  {"answer": "Berlin is probably mild this time of year."}
+  attempt 7, last failure RT0016 (journal mismatch)
+16:06:32  model call #6  ->  {"answer": "Berlin is probably mild this time of year."}
+  attempt 8, last failure RT0016 (journal mismatch)
+16:06:34  model call #7  ->  {"answer": "Berlin is probably mild this time of year."}
+  attempt 9, last failure RT0016 (journal mismatch)
+16:06:36  model call #8  ->  {"answer": "Berlin is probably mild this time of year."}
+  attempt 10, last failure RT0016 (journal mismatch)
+16:06:38  model call #9  ->  {"answer": "Berlin is probably mild this time of year."}
+  attempt 11, last failure RT0016 (journal mismatch)
+16:06:41  model call #10  ->  {"answer": "Berlin is probably mild this time of year."}
+  attempt 12, last failure RT0016 (journal mismatch)
+16:06:43  model call #11  ->  {"answer": "Berlin is probably mild this time of year."}
+  attempt 13, last failure RT0016 (journal mismatch)
+16:06:45  model call #12  ->  {"answer": "Berlin is probably mild this time of year."}
+  attempt 14, last failure RT0016 (journal mismatch)
+16:06:47  model call #13  ->  {"answer": "Berlin is probably mild this time of year."}
+  attempt 15, last failure RT0016 (journal mismatch)
+16:06:49  model call #14  ->  {"answer": "Berlin is probably mild this time of year."}
+  attempt 16, last failure RT0016 (journal mismatch)
+16:06:52  model call #15  ->  {"answer": "Berlin is probably mild this time of year."}
+  attempt 17, last failure RT0016 (journal mismatch)
+16:06:55  model call #16  ->  {"answer": "Berlin is probably mild this time of year."}
+  attempt 18, last failure RT0016 (journal mismatch)
+16:06:57  model call #17  ->  {"answer": "Berlin is probably mild this time of year."}
+  attempt 19, last failure RT0016 (journal mismatch)
+16:06:59  model call #18  ->  {"answer": "Berlin is probably mild this time of year."}
+
+status: paused   model calls: 18   weather calls: 1
+last failure RT0016:
+  [570 Journal mismatch] Found a mismatch between the code paths taken during the previous execution and the paths taken during this execution.
+  This typically happens when some parts of the code are non-deterministic.
+   - The previous execution ran and recorded the following: 'handler return' (index '1')
+   - The current execution attempts to perform the following: 'run'
+journal:
+   0  Command: Input
+   1  Command: Run  get_weather
+   2  Notification: Run
+   3  Command: Sleep  rate-limit pause
+   4  Notification: Sleep
+UI: http://127.0.0.1:19070/ui/   invocation inv_16wT0XazNWHk3QxIhqQyiO3aqI2PJP59TM
