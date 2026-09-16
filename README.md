@@ -114,7 +114,7 @@ This typically happens when some parts of the code are non-deterministic.
   - **The formatter:** `Display` for `CommandTypeMismatchError` (`src/vm/errors.rs:201-213`) prints `expected` as "previous execution ran and recorded" and `actual` as "current execution attempts".
 
   `main` has the same code as of 2026-09-16. The same-type message above (`CommandMismatchError`) prints a diff instead and is not affected. This hasn't been reported upstream.
-- **Paused invocations lose their failure details.** Once paused, `sys_invocation.last_failure` and `last_failure_error_code` are empty, so `demo.py` keeps the last values it saw.
+- **A paused invocation's failure moves to its journal events.** Once paused, `sys_invocation.last_failure` and `last_failure_error_code` are empty. The failure that caused the pause is kept on the invocation's `Paused` event in `sys_journal_events`, next to one `TransientError` event per failed attempt, and `demo.py` reads it from there.
 - **RT0016 was retried, not failed immediately.** It followed the handler's retry policy (`on_max_attempts="pause"`) on this server version.
 
 ## Recording it by hand

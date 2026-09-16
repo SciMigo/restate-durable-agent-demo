@@ -137,12 +137,22 @@ def main() -> None:
                 break
             code = row.get("last_failure_error_code")
             if code:
-                # A paused invocation drops these fields, so keep the last one seen.
                 failure = (code, row.get("last_failure") or "")
             if code and (row.get("retry_count"), code) != seen:
                 seen = (row.get("retry_count"), code)
                 say(f"  attempt {seen[0]}, last failure {code} ({FAILURES.get(code, 'see UI')})")
             time.sleep(0.5)
+
+        if row.get("status") == "paused":
+            # Pausing clears last_failure on sys_invocation; the failure that caused the
+            # pause is kept on the invocation's Paused event in sys_journal_events.
+            events = sql(
+                f"SELECT event_json FROM sys_journal_events WHERE id = '{invocation}' "
+                "AND event_type = 'Paused' ORDER BY appended_at DESC LIMIT 1"
+            )
+            if events:
+                last = json.loads(events[0]["event_json"]).get("last_failure") or {}
+                failure = (last.get("restate_doc_error_code"), last.get("error_message") or "")
 
         say()
         stats = http("GET", f"{STUB}/stats")
