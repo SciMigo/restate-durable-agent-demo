@@ -1,0 +1,56 @@
+== 1. a stuck invocation: naive agent, drifted model
+16:43:43  model stub on :8765, MODEL_ANSWERS=drifted
+invoked inv_1dFn1jZ5l9RI4YcvTavbL2Q9dkj0yZ3uGn on deployment dp_16R728fEzlWUoo1Y3SNvxi9
+16:43:43  model call #1  ->  {"tool": "get_weather", "city": "Berlin"}
+16:43:43  weather call #1  get_weather(Berlin)
+kill -9 and restart; waiting for the retries to run out
+16:43:47  model call #2  ->  {"answer": "Berlin is probably mild this time of year."}
+16:43:49  model call #3  ->  {"answer": "Berlin is probably mild this time of year."}
+16:43:52  model call #4  ->  {"answer": "Berlin is probably mild this time of year."}
+16:43:54  model call #5  ->  {"answer": "Berlin is probably mild this time of year."}
+16:43:56  model call #6  ->  {"answer": "Berlin is probably mild this time of year."}
+16:43:58  model call #7  ->  {"answer": "Berlin is probably mild this time of year."}
+16:44:00  model call #8  ->  {"answer": "Berlin is probably mild this time of year."}
+16:44:02  model call #9  ->  {"answer": "Berlin is probably mild this time of year."}
+16:44:05  model call #10  ->  {"answer": "Berlin is probably mild this time of year."}
+16:44:07  model call #11  ->  {"answer": "Berlin is probably mild this time of year."}
+16:44:09  model call #12  ->  {"answer": "Berlin is probably mild this time of year."}
+16:44:11  model call #13  ->  {"answer": "Berlin is probably mild this time of year."}
+16:44:14  model call #14  ->  {"answer": "Berlin is probably mild this time of year."}
+16:44:16  model call #15  ->  {"answer": "Berlin is probably mild this time of year."}
+16:44:19  model call #16  ->  {"answer": "Berlin is probably mild this time of year."}
+16:44:21  model call #17  ->  {"answer": "Berlin is probably mild this time of year."}
+16:44:23  model call #18  ->  {"answer": "Berlin is probably mild this time of year."}
+status: paused   model calls so far: 18
+
+== 2. deploy the fix as a new deployment and resume the paused invocation on it
+PATCH /invocations/inv_1dFn1jZ5l9RI4YcvTavbL2Q9dkj0yZ3uGn/resume?deployment=dp_11aIP4h4jRqNAQfhLIZ9uGl  ->  200
+pinned deployment: dp_11aIP4h4jRqNAQfhLIZ9uGl   last failure RT0016:
+  [570 Journal mismatch] Found a mismatch between the code paths taken during the previous execution and the paths taken during this execution.
+  This typically happens when some parts of the code are non-deterministic.
+  - The mismatch happened while executing 'run' (index '1')
+  - Difference:
+     name: get_weather != call model
+model calls since resume: 0
+PATCH pause  ->  202; status: paused
+
+== 3. restart it as new on the fixed deployment
+PATCH restart-as-new while paused  ->  409 {'message': "The invocation 'inv_1dFn1jZ5l9RI4YcvTavbL2Q9dkj0yZ3uGn' is still running.", 'restate_code': None}
+PATCH kill  ->  200; original: failure [409] killed
+PATCH restart-as-new after kill  ->  200   new invocation inv_1dFn1jZ5l9RI66c4imrZWDwTEZhvXwLLfX
+16:44:24  model call #1  ->  {"tool": "get_weather", "city": "Berlin"}
+16:44:24  weather call #1  get_weather(Berlin)
+16:44:30  model call #2  ->  {"answer": "Berlin right now: 18\u00b0C and cloudy."}
+status: completed   pinned deployment: dp_11aIP4h4jRqNAQfhLIZ9uGl   model calls: 2
+result: Berlin right now: 18°C and cloudy.
+journal of the new invocation:
+   0  Command: Input
+   1  Command: Run  call model
+   2  Notification: Run
+   3  Command: Run  get_weather
+   4  Notification: Run
+   5  Command: Sleep  rate-limit pause
+   6  Notification: Sleep
+   7  Command: Run  call model
+   8  Notification: Run
+   9  Command: Output

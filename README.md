@@ -11,6 +11,7 @@ This is an independent teaching sample by SciMigo. It is not affiliated with or 
 | `agent.py` | The Restate service `WeatherAgent/run`. `AGENT_MODE=naive` calls the model with a plain HTTP request; `AGENT_MODE=journaled` wraps the call in `ctx.run_typed`. Nothing else differs. |
 | `model_stub.py` | A stand-in for the paid model API and the weather API. It counts every call, and it runs in its own process so the counts survive the agent being killed. |
 | `demo.py` | Runs one scenario end to end: start, invoke, kill, restart, then report the outcome, the call counts and the journal. |
+| `recover.py` | Takes the stuck invocation from scenario 3 and tries each way out: resume on a fixed deployment, restart-as-new, kill. |
 | `docker-compose.yml` | Restate server, pinned to 1.7.10. |
 | `observed/` | Output of each scenario, exactly as recorded. |
 
@@ -74,18 +75,45 @@ The rule the demo teaches: **any value your handler decides with must come from 
 
 Timings and attempt numbers will vary; the call counts and outcomes reproduced on every run.
 
-## Observations to confirm
+## Recovering a stuck invocation
 
-- **The mismatch message may name the two sides the wrong way round.** On the drifted run the SDK reports:
+`python recover.py` recreates scenario 3's paused invocation, then deploys the fixed (journaled) agent as a second deployment on :9081. Recorded in `observed/5-recover.txt`:
+
+| Step | Result |
+|---|---|
+| `PATCH /invocations/{id}/resume?deployment=<fixed deployment>` | Accepted (200), and the invocation is re-pinned to the fixed deployment. It still fails with RT0016, because the fixed code's first step is `Run call model` while the recorded journal has `Run get_weather` at index 1. No model calls are made. |
+| `PATCH /invocations/{id}/restart-as-new` while paused | Refused: 409, "The invocation … is still running." |
+| `PATCH /invocations/{id}/kill`, then `restart-as-new` | The original completes as a failure (`[409] killed`). The new invocation starts from the original input on the latest deployment and completes with 2 model calls. |
+
+Resuming without changing deployments behaves like the stuck retries: every attempt calls the model again and fails with RT0016.
+
+The error for the resumed invocation is a same-type mismatch, and it names the difference directly:
+
+```
+[570 Journal mismatch] Found a mismatch between the code paths taken during the previous execution and the paths taken during this execution.
+This typically happens when some parts of the code are non-deterministic.
+- The mismatch happened while executing 'run' (index '1')
+- Difference:
+   name: get_weather != call model
+```
+
+**What this means:** deploying the fix does not rescue an invocation whose journal was written by non-deterministic code, because the fixed code takes a different path through the journal. The way out is to kill it and restart it as new, which re-runs everything from the input, including the tool call. The cheaper fix is to put the model call in `ctx.run` before anything gets stuck.
+
+## Observations
+
+- **The type-mismatch message swaps its two labels.** On the drifted run the SDK reports:
 
   ```
-  [570 Journal mismatch] Found a mismatch between the code paths taken during the previous execution and the paths taken during this execution.
-  This typically happens when some parts of the code are non-deterministic.
-   - The previous execution ran and recorded the following: 'handler return' (index '1')
-   - The current execution attempts to perform the following: 'run'
+  - The previous execution ran and recorded the following: 'handler return' (index '1')
+  - The current execution attempts to perform the following: 'run'
   ```
 
-  Journal entry 1 is `Run get_weather`, and the traceback in `.demo/agent.log` shows the replay failing inside `sys_write_output_success`, so the handler's return came from *this* execution. Confirm before reporting it upstream.
+  The recorded journal has `Run get_weather` at index 1; it was this attempt that tried to return. The source agrees, in `restatedev/sdk-shared-core` v7.0.3, the core `restate-sdk` 1.0.5 is built on:
+  - **Replay:** `PopJournalEntry` (`src/vm/transitions/journal.rs`) pops the recorded command and calls it `actual`. The command the handler is issuing now is `expected`.
+  - **The call:** when the types differ, `RawMessage::decode_to` (`src/service_protocol/encoding.rs:80`) builds `CommandTypeMismatchError::new(index, <recorded type>, <current type>)`, filling `actual` and `expected` that way.
+  - **The formatter:** `Display` for `CommandTypeMismatchError` (`src/vm/errors.rs:201-213`) prints `expected` as "previous execution ran and recorded" and `actual` as "current execution attempts".
+
+  `main` has the same code as of 2026-09-16. The same-type message above (`CommandMismatchError`) prints a diff instead and is not affected. This hasn't been reported upstream.
 - **Paused invocations lose their failure details.** Once paused, `sys_invocation.last_failure` and `last_failure_error_code` are empty, so `demo.py` keeps the last values it saw.
 - **RT0016 was retried, not failed immediately.** It followed the handler's retry policy (`on_max_attempts="pause"`) on this server version.
 

@@ -77,10 +77,10 @@ def start_stub(model: str) -> subprocess.Popen:
     return proc
 
 
-def start_agent(mode: str, log) -> subprocess.Popen:
-    env = dict(os.environ, AGENT_MODE=mode)
+def start_agent(mode: str, log, port: int = 9080) -> subprocess.Popen:
+    env = dict(os.environ, AGENT_MODE=mode, AGENT_PORT=str(port))
     proc = subprocess.Popen([PY, os.path.join(HERE, "agent.py")], env=env, stdout=log, stderr=log)
-    if not wait_for(lambda: port_open(9080), 15):
+    if not wait_for(lambda: port_open(port), 15):
         sys.exit("agent did not start; see .demo/agent.log")
     return proc
 
