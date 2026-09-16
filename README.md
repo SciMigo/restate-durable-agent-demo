@@ -10,7 +10,7 @@ This is an independent teaching sample by SciMigo. It is not affiliated with or 
 |---|---|
 | `agent.py` | The Restate service `WeatherAgent/run`. `AGENT_MODE=naive` calls the model with a plain HTTP request; `AGENT_MODE=journaled` wraps the call in `ctx.run_typed`. Nothing else differs. |
 | `model_stub.py` | A stand-in for the paid model API and the weather API. It counts every call, and it runs in its own process so the counts survive the agent being killed. |
-| `demo.py` | Runs one scenario end to end: start, invoke, kill, restart, then report the outcome, the call counts and the journal. |
+| `demo.py` | Runs one scenario end to end: start, invoke, kill, restart, then report the outcome, the call counts and the journal. `--kill-during` and `--restart-delay` choose when the kill lands and how long the agent stays down. |
 | `recover.py` | Takes the stuck invocation from scenario 3 and tries each way out: resume on a fixed deployment, restart-as-new, kill. |
 | `docker-compose.yml` | Restate server, pinned to 1.7.10. |
 | `observed/` | Output of each scenario, exactly as recorded. |
@@ -30,14 +30,15 @@ The server keeps no volume, so `docker compose down` resets it.
 
 ## The scenarios
 
-In every run the agent first decides to call the tool, calls it, and starts a 6-second durable pause. `demo.py` kills the agent one second into that pause and restarts it two seconds later.
+In every run the agent first decides to call the tool, calls it, and starts a 6-second durable pause. By default `demo.py` kills the agent one second into that pause and restarts it two seconds later.
 
 | Command | What happens | Model calls (a clean run needs 2) |
 |---|---|---|
 | `python demo.py --agent naive --model stable` | The replay re-runs the unjournaled model call. The model gives the same decision, so replay continues and the run completes. The weather tool is **not** called again, because its result is in the journal. | **3** |
 | `python demo.py --agent naive --model varying` | The re-run model call returns a *different* decision (answer directly). That contradicts the journal, which says the agent called the tool: **RT0016 journal mismatch**. Restate retries; this stub alternates, so the next retry happens to agree again, and the run completes. | **4** |
-| `python demo.py --agent naive --model drifted --wait 150` | The model changed its mind for good. Every retry re-calls the model and fails with RT0016, until the handler's retry policy (20 attempts) pauses the invocation. | **18**, then paused |
+| `python demo.py --agent naive --model drifted --wait 150` | The model changed its mind for good. Every retry re-calls the model and fails with RT0016, until the handler's retry policy (20 attempts) pauses the invocation. | **18** in our run, then paused; the count depends on timing ([below](#how-many-calls-scenario-3-costs)) |
 | `python demo.py --agent journaled --model varying` | The first model decision is recorded as `Run call model`. The replay returns the recorded decision without calling the model, and the run completes. | **2** |
+| `python demo.py --agent journaled --model stable --kill-during model` | The kill lands while the first model call is in flight: the model has answered, but the answer never reached the journal. The replay calls the model again. | **3** |
 
 Journal of the naive run: there is no entry for the model call, so nothing stops it from running again.
 
@@ -65,7 +66,36 @@ Journal of the journaled run:
  9  Command: Output
 ```
 
-The rule the demo teaches: **any value your handler decides with must come from the journal.** Wrap model calls, network calls, clocks and random numbers in `ctx.run`, or use the context's deterministic helpers (`ctx.random()`, `ctx.uuid()`, `ctx.time()`). See [Durable steps](https://docs.restate.dev/develop/python/durable-steps) and [RT0016](https://docs.restate.dev/references/errors).
+The rule the demo teaches: **a replay has to issue the same Restate operations, in the same order, with the same inputs.** Anything that can come out differently on another attempt (a model answer, an HTTP response, the clock, a random number) has to be recorded before the handler branches on it: wrap model calls and network calls in `ctx.run`, and use the context's deterministic helpers (`ctx.random()`, `ctx.uuid()`, `ctx.time()`). Values that cannot change between attempts need no recording: the input, which is journal entry 0, constants, and anything computed from them. Code counts as constant only while its deployment does not change, which is why the `force: true` re-registration below is a demo shortcut. See [Durable steps](https://docs.restate.dev/develop/python/durable-steps) and [RT0016](https://docs.restate.dev/references/errors).
+
+## What `ctx.run` does not promise
+
+Scenario 5 kills the journaled agent one second into its first model call. The stub has decided, but holds the answer back for four seconds. Recorded in `observed/6-journaled-killed-mid-call.txt`:
+
+```
+17:55:34  model call #1  ->  {"tool": "get_weather", "city": "Berlin"}
+kill -9 agent (pid 2294216), before model call #1 returned its answer
+agent restarted (pid 2294655); Restate retries and replays the journal
+  attempt 3, last failure RT0010 (service unreachable)
+17:55:38  model call #2  ->  {"tool": "get_weather", "city": "Berlin"}
+17:55:38  weather call #1  get_weather(Berlin)
+17:55:38  model call #1  answer not delivered: the caller is gone
+17:55:44  model call #3  ->  {"answer": "Berlin right now: 18\u00b0C and cloudy."}
+
+status: completed   model calls: 3   weather calls: 1
+```
+
+The journal is the same ten entries as scenario 4's; nothing in it shows that a call was paid for and lost. A step counts as done once its result is in Restate's log ([Architecture](https://docs.restate.dev/references/architecture)); an attempt that dies before then runs the step again. So `ctx.run` never repeats a call that finished, and it can repeat one that was in flight. For an effect that must not happen twice, such as a payment, send an idempotency key the API honours ([Sagas](https://docs.restate.dev/guides/sagas)).
+
+## How many calls scenario 3 costs
+
+The drifted run paused after 18 model calls. That is this machine's number, not the demo's. The retry policy allows 20 attempts, and every attempt Restate makes while the agent is down fails with RT0010 without calling the model. How many fall in that window depends on how long the agent takes to come back. Same scenario, changing only `--restart-delay` (recorded in `observed/7-naive-drifted-restart-delay.txt`):
+
+| `--restart-delay` | 0.2 s | 2 s (default) | 5 s | 9 s |
+|---|---|---|---|---|
+| Model calls before the pause | 20 | 18 | 16 | 15 |
+
+The other scenarios' counts don't depend on timing: their extra calls happen on the first replay that reaches the agent, however many attempts it took to get there.
 
 ## Measured on
 
@@ -73,7 +103,7 @@ The rule the demo teaches: **any value your handler decides with must come from 
 - `restate-sdk` 1.0.5 and `hypercorn` 0.18.0 on Python 3.12.3
 - Linux, 2026-09-16
 
-Timings and attempt numbers will vary; the call counts and outcomes reproduced on every run.
+Timings and attempt numbers will vary. The outcomes, and the call counts of scenarios 1, 2, 4 and 5, reproduced on every run; scenario 3's count depends on timing (see above).
 
 ## Recovering a stuck invocation
 
@@ -97,7 +127,7 @@ This typically happens when some parts of the code are non-deterministic.
    name: get_weather != call model
 ```
 
-**What this means:** deploying the fix does not rescue an invocation whose journal was written by non-deterministic code, because the fixed code takes a different path through the journal. The way out is to kill it and restart it as new, which re-runs everything from the input, including the tool call. The cheaper fix is to put the model call in `ctx.run` before anything gets stuck.
+**What this means:** a resume can only rescue an invocation when the new code is *journal-compatible*, meaning its replay issues the operations already recorded, in the same order. [Versioning](https://docs.restate.dev/services/versioning) lists a bug fixed inside a `ctx.run` as safe, and adding, removing or reordering operations as unsafe. This fix adds `Run call model` in front of the recorded `Run get_weather`, so however correct it is, it cannot replay this journal. The way out here is to kill the invocation and restart it as new, which re-runs everything from the input, including the tool call. The cheaper fix is to put the model call in `ctx.run` before anything gets stuck.
 
 ## Observations
 

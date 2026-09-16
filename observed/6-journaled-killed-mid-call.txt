@@ -1,0 +1,26 @@
+== agent: journaled   model answers: stable
+17:55:34  model stub on :8765, MODEL_ANSWERS=stable
+invoked WeatherAgent/run   inv_1hxoDh7lblmW3m6su9nGNiXRYC1BLPRGnO
+17:55:34  model call #1  ->  {"tool": "get_weather", "city": "Berlin"}
+kill -9 agent (pid 2294216), before model call #1 returned its answer
+agent restarted (pid 2294655); Restate retries and replays the journal
+  attempt 3, last failure RT0010 (service unreachable)
+17:55:38  model call #2  ->  {"tool": "get_weather", "city": "Berlin"}
+17:55:38  weather call #1  get_weather(Berlin)
+17:55:38  model call #1  answer not delivered: the caller is gone
+17:55:44  model call #3  ->  {"answer": "Berlin right now: 18\u00b0C and cloudy."}
+
+status: completed   model calls: 3   weather calls: 1
+result: Berlin right now: 18°C and cloudy.
+journal:
+   0  Command: Input
+   1  Command: Run  call model
+   2  Notification: Run
+   3  Command: Run  get_weather
+   4  Notification: Run
+   5  Command: Sleep  rate-limit pause
+   6  Notification: Sleep
+   7  Command: Run  call model
+   8  Notification: Run
+   9  Command: Output
+UI: http://127.0.0.1:19070/ui/   invocation inv_1hxoDh7lblmW3m6su9nGNiXRYC1BLPRGnO

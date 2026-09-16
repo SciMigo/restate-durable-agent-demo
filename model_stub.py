@@ -9,6 +9,10 @@ here, in a separate process: they are the evidence of what ran twice.
     MODEL_ANSWERS=drifted  the model changes its mind once and stays changed: after
                            the first call, the same messages always get a direct answer
 
+    MODEL_SLOW_FIRST_SECONDS=4  the first model call decides at once but holds its answer
+                           back this long, so the caller can die after the model has done
+                           (and billed) the work and before the answer arrives
+
 Endpoints:
     POST /model         {"messages": [...]} -> {"tool": "get_weather", "city": ...} or {"answer": ...}
     POST /weather       {"city": ...}       -> {"forecast": ...}
@@ -20,11 +24,13 @@ import json
 import os
 import sys
 import threading
+import time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 MODE = os.environ.get("MODEL_ANSWERS", "stable")
 PORT = int(os.environ.get("MODEL_STUB_PORT", "8765"))
+SLOW_FIRST = float(os.environ.get("MODEL_SLOW_FIRST_SECONDS") or 0)
 
 _lock = threading.Lock()
 _counts = {"model_calls": 0, "weather_calls": 0}
@@ -72,7 +78,13 @@ class Handler(BaseHTTPRequestHandler):
                 n = _counts["model_calls"]
             decision = decide(body.get("messages", []), n)
             log(f"model call #{n}  ->  {json.dumps(decision)}")
-            return self._json(200, decision)
+            if n == 1 and SLOW_FIRST:
+                time.sleep(SLOW_FIRST)
+            try:
+                return self._json(200, decision)
+            except (BrokenPipeError, ConnectionResetError):
+                log(f"model call #{n}  answer not delivered: the caller is gone")
+                return
         if self.path == "/weather":
             with _lock:
                 _counts["weather_calls"] += 1

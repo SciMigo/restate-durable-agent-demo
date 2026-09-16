@@ -4,6 +4,12 @@
     python demo.py --agent naive     --model varying   # ...and the replay diverges: RT0016
     python demo.py --agent naive     --model drifted   # ...and it stays broken until it pauses
     python demo.py --agent journaled --model varying   # the fix: one call, clean replay
+    python demo.py --agent journaled --model stable --kill-during model
+                                                       # ...but a call cut off mid-flight is paid again
+
+By default the agent is killed one second into its durable pause and restarted two
+seconds later. --kill-during model kills it while its first model call is waiting
+for the answer instead; --restart-delay changes how long it stays down.
 
 Needs the Restate server from docker-compose.yml (`docker compose up -d`).
 The model stub's log lines ("model call #n") print live in this terminal.
@@ -27,6 +33,7 @@ ADMIN = os.environ.get("RESTATE_ADMIN", "http://127.0.0.1:19070")
 STUB = "http://127.0.0.1:8765"
 AGENT_URI_FOR_SERVER = os.environ.get("AGENT_URI", "http://host.docker.internal:9080")
 QUESTION = "What is the weather in Berlin?"
+SLOW_FIRST_ANSWER = 4  # seconds the stub holds back its first answer with --kill-during model
 
 
 BOLD = sys.stdout.isatty()
@@ -69,8 +76,8 @@ def port_open(port: int) -> bool:
         return s.connect_ex(("127.0.0.1", port)) == 0
 
 
-def start_stub(model: str) -> subprocess.Popen:
-    env = dict(os.environ, MODEL_ANSWERS=model)
+def start_stub(model: str, slow_first: float = 0) -> subprocess.Popen:
+    env = dict(os.environ, MODEL_ANSWERS=model, MODEL_SLOW_FIRST_SECONDS=str(slow_first))
     proc = subprocess.Popen([PY, os.path.join(HERE, "model_stub.py")], env=env)
     if not wait_for(lambda: http("GET", f"{STUB}/stats") is not None, 10):
         sys.exit("model stub did not start")
@@ -90,6 +97,9 @@ def main() -> None:
     parser.add_argument("--agent", choices=["naive", "journaled"], required=True)
     parser.add_argument("--model", choices=["stable", "varying", "drifted"], default="stable")
     parser.add_argument("--wait", type=float, default=60, help="seconds to watch after the restart")
+    parser.add_argument("--kill-during", choices=["pause", "model"], default="pause",
+                        help="kill the agent in its durable pause (default), or while its first model call is in flight")
+    parser.add_argument("--restart-delay", type=float, default=2, help="seconds between the kill and the restart")
     args = parser.parse_args()
 
     try:
@@ -105,7 +115,7 @@ def main() -> None:
     stub = agent = None
     try:
         say(f"== agent: {args.agent}   model answers: {args.model}")
-        stub = start_stub(args.model)
+        stub = start_stub(args.model, SLOW_FIRST_ANSWER if args.kill_during == "model" else 0)
         agent = start_agent(args.agent, agent_log)
         # force: this demo re-registers the same address with different code per scenario
         http("POST", f"{ADMIN}/deployments", {"uri": AGENT_URI_FOR_SERVER, "force": True})
@@ -114,14 +124,20 @@ def main() -> None:
         invocation = sent["invocationId"]
         say(f"invoked WeatherAgent/run   {invocation}")
 
-        if not wait_for(lambda: http("GET", f"{STUB}/stats")["weather_calls"] >= 1, 20):
-            sys.exit("the agent never reached the weather tool")
-        time.sleep(1)  # now inside the durable rate-limit pause
+        if args.kill_during == "model":
+            if not wait_for(lambda: http("GET", f"{STUB}/stats")["model_calls"] >= 1, 20):
+                sys.exit("the agent never called the model")
+            time.sleep(1)  # the stub has the answer and is still holding it back
+        else:
+            if not wait_for(lambda: http("GET", f"{STUB}/stats")["weather_calls"] >= 1, 20):
+                sys.exit("the agent never reached the weather tool")
+            time.sleep(1)  # now inside the durable rate-limit pause
 
         agent.send_signal(signal.SIGKILL)
         agent.wait()
-        say(f"kill -9 agent (pid {agent.pid})")
-        time.sleep(2)
+        during = ", before model call #1 returned its answer" if args.kill_during == "model" else ""
+        say(f"kill -9 agent (pid {agent.pid}){during}")
+        time.sleep(args.restart_delay)
         agent = start_agent(args.agent, agent_log)
         say(f"agent restarted (pid {agent.pid}); Restate retries and replays the journal")
 
