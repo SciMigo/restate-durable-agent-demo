@@ -28,6 +28,18 @@ The ports are moved off Restate's defaults (8080, 9070) to avoid clashing with a
 
 The server keeps no volume, so `docker compose down` resets it.
 
+## Browser lab (recommended)
+
+The [SciMigo lab page](https://scimigo.com/en/learn/restate-durable-agents/01-the-model-call-you-pay-for-twice/lab) gives the full exercise. To run its scenarios with buttons on your own machine:
+
+1. In terminal 1, from this repository, run `docker compose up -d`. Leave Restate running between scenarios. Its UI is at <http://127.0.0.1:19070/ui/>.
+2. In terminal 2, from this repository, run `python3 lab_server.py`. Open the exact `http://127.0.0.1:3002/` address it prints. The local page uses Python's standard library, so there is nothing to install for the page itself.
+3. Click **Prepare this lab**, then run exercises 1.1–1.5 in order. Prepare creates `.venv` and installs this repo's packages. Each button runs `demo.py` in the background, so watch **Live output** for its status, call counts, and journal. Run one scenario at a time. Exercise 1.6 is optional.
+
+The page uses port 3002 so it can coexist with the Temporal course lab page on 3000. If Chrome rewrites the local address to `/en`, use the address printed in terminal 2 or open it in a fresh browser profile. The page also accepts `/en` to recover from that cached redirect. To choose another port, run `python3 lab_server.py --port 3003` and use the printed URL. Keep Restate running between scenarios; `docker compose up -d` on an already running server does not start another copy. Stop the page with Ctrl-C and, when finished with the lab, run `docker compose down` to reset Restate.
+
+**Terminal route:** The setup commands above also support the `demo.py` commands in the scenario table. Run them with `.venv/bin/python` if your shell has no `python` command.
+
 ## The scenarios
 
 In every run the agent first decides to call the tool, calls it, and starts a 6-second durable pause. By default `demo.py` kills the agent one second into that pause and restarts it two seconds later.
