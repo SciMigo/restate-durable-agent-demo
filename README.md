@@ -85,7 +85,7 @@ agent restarted (pid 2294655); Restate retries and replays the journal
 status: completed   model calls: 3   weather calls: 1
 ```
 
-The journal is the same ten entries as scenario 4's; nothing in it shows that a call was paid for and lost. A step counts as done once its result is in Restate's log ([Architecture](https://docs.restate.dev/references/architecture)); an attempt that dies before then runs the step again. So `ctx.run` never repeats a call that finished, and it can repeat one that was in flight. For an effect that must not happen twice, such as a payment, send an idempotency key the API honours ([Sagas](https://docs.restate.dev/guides/sagas)).
+The journal is the same ten entries as scenario 4's; nothing in it shows that a call was paid for and lost. A step counts as done once its result is in Restate's log ([Architecture](https://docs.restate.dev/references/architecture)); an attempt that dies before then runs the step again. So `ctx.run` never re-executes a step once Restate has recorded its result, but the external call may already have happened before that point: here the kill came while the answer was still on its way, and a crash after the answer arrives but before Restate records it runs the call again just the same. For an effect that must not happen twice, such as a payment, send an idempotency key the API honours ([Sagas](https://docs.restate.dev/guides/sagas)).
 
 ## How many calls scenario 3 costs
 
