@@ -44,6 +44,10 @@ The page uses port 3002 so it can coexist with the Temporal course lab page on 3
 
 In every run the agent first decides to call the tool, calls it, and starts a 6-second durable pause. By default `demo.py` kills the agent one second into that pause and restarts it two seconds later.
 
+Run one scenario at a time. If you stop one early (Ctrl-C, or **Stop** on the lab page), `demo.py` kills its invocation on the way out: left alone, its retries would reach the next scenario's agent and bill that run's stub.
+
+The `attempt N, last failure …` lines are samples of the invocation's retry counter, read every half second while it runs. They show which failures happened, but a number can be skipped or repeat the previous failure, so count model calls, not attempt numbers.
+
 | Command | What happens | Model calls (a clean run needs 2) |
 |---|---|---|
 | `python demo.py --agent naive --model stable` | The replay re-runs the unjournaled model call. The model gives the same decision, so replay continues and the run completes. The weather tool is **not** called again, because its result is in the journal. | **3** |
@@ -156,7 +160,7 @@ This typically happens when some parts of the code are non-deterministic.
   - **The formatter:** `Display` for `CommandTypeMismatchError` (`src/vm/errors.rs:201-213`) prints `expected` as "previous execution ran and recorded" and `actual` as "current execution attempts".
 
   `main` has the same code as of 2026-09-16. The same-type message above (`CommandMismatchError`) prints a diff instead and is not affected. Reported upstream as [restatedev/sdk-shared-core#96](https://github.com/restatedev/sdk-shared-core/issues/96), with a fix in [#97](https://github.com/restatedev/sdk-shared-core/pull/97).
-- **A paused invocation's failure moves to its journal events.** Once paused, `sys_invocation.last_failure` and `last_failure_error_code` are empty. The failure that caused the pause is kept on the invocation's `Paused` event in `sys_journal_events`, next to one `TransientError` event per failed attempt, and `demo.py` reads it from there.
+- **A paused invocation's failure moves to its journal events.** Once paused, `sys_invocation.last_failure` and `last_failure_error_code` are empty. The failure that caused the pause is kept on the invocation's `Paused` event in `sys_journal_events`, and `demo.py` reads it from there. The `TransientError` events beside it are not one per attempt: identical failures in a row are recorded once. A drifted run whose 17 attempts after the restart all failed with RT0016 held a single RT0016 `TransientError` event (2026-09-19).
 - **RT0016 was retried, not failed immediately.** It followed the handler's retry policy (`on_max_attempts="pause"`) on this server version.
 
 ## Recording it by hand

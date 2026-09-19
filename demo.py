@@ -112,7 +112,8 @@ def main() -> None:
 
     os.makedirs(os.path.join(HERE, ".demo"), exist_ok=True)
     agent_log = open(os.path.join(HERE, ".demo", "agent.log"), "a")
-    stub = agent = None
+    stub = agent = invocation = None
+    row = {}
     try:
         say(f"== agent: {args.agent}   model answers: {args.model}")
         stub = start_stub(args.model, SLOW_FIRST_ANSWER if args.kill_during == "model" else 0)
@@ -141,7 +142,7 @@ def main() -> None:
         agent = start_agent(args.agent, agent_log)
         say(f"agent restarted (pid {agent.pid}); Restate retries and replays the journal")
 
-        seen, row, failure = None, {}, None
+        seen, failure = None, None
         deadline = time.time() + args.wait
         while time.time() < deadline:
             rows = sql(
@@ -188,6 +189,15 @@ def main() -> None:
             print(f"  {entry['index']:>2}  {entry['entry_type']}{name}", flush=True)
         say(f"UI: {ADMIN}/ui/   invocation {invocation}")
     finally:
+        # Stopped early (Ctrl-C, the lab page's Stop, --wait running out): the invocation is still
+        # retrying, and its next attempt would reach whichever agent runs next and bill that run's
+        # stub. Kill it so every scenario starts alone.
+        if invocation and row.get("status") not in ("completed", "paused"):
+            try:
+                http("PATCH", f"{ADMIN}/invocations/{invocation}/kill")
+                say(f"killed invocation {invocation}: it had not finished, so it cannot retry into the next run")
+            except (urllib.error.URLError, OSError) as error:
+                say(f"could not kill invocation {invocation} ({error}); kill it in the UI before the next run")
         for proc in (agent, stub):
             if proc and proc.poll() is None:
                 # Hypercorn shuts down on SIGINT, not SIGTERM.
@@ -201,4 +211,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(130)  # stopped on purpose; the finally block has already cleaned up
