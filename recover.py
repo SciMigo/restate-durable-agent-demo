@@ -84,6 +84,7 @@ def main() -> None:
     os.makedirs(os.path.join(HERE, ".demo"), exist_ok=True)
     log = open(os.path.join(HERE, ".demo", "agent.log"), "a")
     stub = naive = fixed = None
+    stuck = restarted = None
     try:
         say("== 1. a stuck invocation: naive agent, drifted model")
         stub = start_stub("drifted")
@@ -137,9 +138,19 @@ def main() -> None:
         say("journal of the new invocation:")
         journal(restarted)
     finally:
+        # Stopped early (Ctrl-C, the lab page's Stop): an invocation still retrying would reach the
+        # next scenario's agent and bill its stub. Kill it, as demo.py does; a paused one stays put.
+        for leftover in (stuck, restarted):
+            status = invocation(leftover).get("status") if leftover else None
+            if status and status not in ("completed", "paused"):
+                call("PATCH", f"{ADMIN}/invocations/{leftover}/kill")
+                say(f"killed invocation {leftover}: it had not finished, so it cannot retry into the next run")
         stop(naive, fixed, stub)
         log.close()
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(130)  # stopped on purpose; the finally block has already cleaned up

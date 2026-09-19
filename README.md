@@ -44,7 +44,7 @@ The page uses port 3002 so it can coexist with the Temporal course lab page on 3
 
 In every run the agent first decides to call the tool, calls it, and starts a 6-second durable pause. By default `demo.py` kills the agent one second into that pause and restarts it two seconds later.
 
-Run one scenario at a time. If you stop one early (Ctrl-C, or **Stop** on the lab page), `demo.py` kills its invocation on the way out: left alone, its retries would reach the next scenario's agent and bill that run's stub.
+Run one scenario at a time. If you stop one early (Ctrl-C, or **Stop** on the lab page), `demo.py` (and `recover.py`) kills its unfinished invocation on the way out: left alone, its retries would reach the next scenario's agent and bill that run's stub.
 
 The `attempt N, last failure …` lines are samples of the invocation's retry counter, read every half second while it runs. They show which failures happened, but a number can be skipped or repeat the previous failure, so count model calls, not attempt numbers.
 
