@@ -26,6 +26,8 @@ import time
 import urllib.error
 import urllib.request
 
+from term import style
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 PY = sys.executable
 INGRESS = os.environ.get("RESTATE_INGRESS", "http://127.0.0.1:18080")
@@ -36,12 +38,19 @@ QUESTION = "What is the weather in Berlin?"
 SLOW_FIRST_ANSWER = 4  # seconds the stub holds back its first answer with --kill-during model
 
 
-BOLD = sys.stdout.isatty()
 FAILURES = {"RT0010": "service unreachable", "RT0016": "journal mismatch"}
+FAILURE_COLOR = {"RT0010": "yellow", "RT0016": "red"}
 
 
-def say(line: str = "") -> None:
-    print(f"\033[1m{line}\033[0m" if BOLD and line else line, flush=True)
+def say(line: str = "", *styles: str) -> None:
+    """Print a line, in `styles` (see term.py) when colors are on."""
+    print(style(line, *styles), flush=True)
+
+
+def ui_links(invocation: str) -> None:
+    """The Restate UI, and this invocation's page in it (both clickable in most terminals)."""
+    say(f"UI:          {ADMIN}/ui/", "blue")
+    say(f"invocation:  {ADMIN}/ui/invocations/{invocation}", "blue")
 
 
 def http(method: str, url: str, body=None, timeout: float = 10):
@@ -115,7 +124,7 @@ def main() -> None:
     stub = agent = invocation = None
     row = {}
     try:
-        say(f"== agent: {args.agent}   model answers: {args.model}")
+        say(f"== agent: {args.agent}   model answers: {args.model}", "bold")
         stub = start_stub(args.model, SLOW_FIRST_ANSWER if args.kill_during == "model" else 0)
         agent = start_agent(args.agent, agent_log)
         # force: this demo re-registers the same address with different code per scenario
@@ -137,10 +146,10 @@ def main() -> None:
         agent.send_signal(signal.SIGKILL)
         agent.wait()
         during = ", before model call #1 returned its answer" if args.kill_during == "model" else ""
-        say(f"kill -9 agent (pid {agent.pid}){during}")
+        say(f"kill -9 agent (pid {agent.pid}){during}", "bold", "red")
         time.sleep(args.restart_delay)
         agent = start_agent(args.agent, agent_log)
-        say(f"agent restarted (pid {agent.pid}); Restate retries and replays the journal")
+        say(f"agent restarted (pid {agent.pid}); Restate retries and replays the journal", "bold")
 
         seen, failure = None, None
         deadline = time.time() + args.wait
@@ -157,7 +166,8 @@ def main() -> None:
                 failure = (code, row.get("last_failure") or "")
             if code and (row.get("retry_count"), code) != seen:
                 seen = (row.get("retry_count"), code)
-                say(f"  attempt {seen[0]}, last failure {code} ({FAILURES.get(code, 'see UI')})")
+                say(f"  attempt {seen[0]}, last failure {code} ({FAILURES.get(code, 'see UI')})",
+                    FAILURE_COLOR.get(code, "yellow"))
             time.sleep(0.5)
 
         if row.get("status") == "paused":
@@ -173,21 +183,24 @@ def main() -> None:
 
         say()
         stats = http("GET", f"{STUB}/stats")
-        say(f"status: {row.get('status')}   model calls: {stats['model_calls']}   weather calls: {stats['weather_calls']}")
-        if row.get("status") == "completed":
+        completed = row.get("status") == "completed"
+        say(f"status: {row.get('status')}   model calls: {stats['model_calls']}   weather calls: {stats['weather_calls']}",
+            "bold", "green" if completed else "red")
+        if completed:
             result = http("GET", f"{INGRESS}/restate/invocation/{invocation}/output")
-            say(f"result: {result}")
+            say(f"result: {result}", "green")
         elif failure:
-            say(f"last failure {failure[0]}:")
+            say(f"last failure {failure[0]}:", "bold", FAILURE_COLOR.get(failure[0], "red"))
             print("  " + failure[1].strip().replace("\n", "\n  "), flush=True)
 
-        say("journal:")
+        say("journal:", "bold")
         for entry in sql(
             f"SELECT index, entry_type, name FROM sys_journal WHERE id = '{invocation}' ORDER BY index"
         ):
             name = f"  {entry['name']}" if entry.get("name") else ""
-            print(f"  {entry['index']:>2}  {entry['entry_type']}{name}", flush=True)
-        say(f"UI: {ADMIN}/ui/   invocation {invocation}")
+            say(f"  {entry['index']:>2}  {entry['entry_type']}{name}",
+                *(("cyan",) if entry.get("name") == "call model" else ()))
+        ui_links(invocation)
     finally:
         # Stopped early (Ctrl-C, the lab page's Stop, --wait running out): the invocation is still
         # retrying, and its next attempt would reach whichever agent runs next and bill that run's
@@ -195,7 +208,8 @@ def main() -> None:
         if invocation and row.get("status") not in ("completed", "paused"):
             try:
                 http("PATCH", f"{ADMIN}/invocations/{invocation}/kill")
-                say(f"killed invocation {invocation}: it had not finished, so it cannot retry into the next run")
+                say(f"killed invocation {invocation}: it had not finished, so it cannot retry into the next run",
+                    "yellow")
             except (urllib.error.URLError, OSError) as error:
                 say(f"could not kill invocation {invocation} ({error}); kill it in the UI before the next run")
         for proc in (agent, stub):

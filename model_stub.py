@@ -28,6 +28,8 @@ import time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from term import style
+
 MODE = os.environ.get("MODEL_ANSWERS", "stable")
 PORT = int(os.environ.get("MODEL_STUB_PORT", "8765"))
 SLOW_FIRST = float(os.environ.get("MODEL_SLOW_FIRST_SECONDS") or 0)
@@ -36,8 +38,8 @@ _lock = threading.Lock()
 _counts = {"model_calls": 0, "weather_calls": 0}
 
 
-def log(line: str) -> None:
-    print(f"{datetime.now():%H:%M:%S}  {line}", flush=True)
+def log(line: str, *styles: str) -> None:
+    print(f"{datetime.now():%H:%M:%S}  {style(line, *styles)}", flush=True)
 
 
 def decide(messages: list[dict], call_number: int) -> dict:
@@ -77,19 +79,19 @@ class Handler(BaseHTTPRequestHandler):
                 _counts["model_calls"] += 1
                 n = _counts["model_calls"]
             decision = decide(body.get("messages", []), n)
-            log(f"model call #{n}  ->  {json.dumps(decision)}")
+            log(f"model call #{n}  ->  {json.dumps(decision)}", "yellow")
             if n == 1 and SLOW_FIRST:
                 time.sleep(SLOW_FIRST)
             try:
                 return self._json(200, decision)
             except (BrokenPipeError, ConnectionResetError):
-                log(f"model call #{n}  answer not delivered: the caller is gone")
+                log(f"model call #{n}  answer not delivered: the caller is gone", "red")
                 return
         if self.path == "/weather":
             with _lock:
                 _counts["weather_calls"] += 1
                 n = _counts["weather_calls"]
-            log(f"weather call #{n}  get_weather({body.get('city')})")
+            log(f"weather call #{n}  get_weather({body.get('city')})", "cyan")
             return self._json(200, {"forecast": "18°C and cloudy"})
         if self.path == "/reset":
             with _lock:
@@ -103,7 +105,7 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    log(f"model stub on :{PORT}, MODEL_ANSWERS={MODE}")
+    log(f"model stub on :{PORT}, MODEL_ANSWERS={MODE}", "dim")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

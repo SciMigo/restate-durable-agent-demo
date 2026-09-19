@@ -26,6 +26,13 @@ docker compose up -d        # Restate: ingress on :18080, admin API and UI on :1
 
 The ports are moved off Restate's defaults (8080, 9070) to avoid clashing with anything already running. Point `demo.py` elsewhere with `RESTATE_INGRESS` and `RESTATE_ADMIN`. The Restate UI is at <http://localhost:19070/ui/>.
 
+Each run ends with two links: the Restate UI, and the run's own invocation page in it
+(`http://127.0.0.1:19070/ui/invocations/<id>`); `recover.py` also links the original invocation.
+Output is colored in a terminal, or when `FORCE_COLOR` is set (agent-runtime sets it for lab actions,
+and the scimigo.com lab page shows the colors); `NO_COLOR` turns colors off. Piped output stays plain text,
+as recorded in `observed/`, which predates the two link lines: its runs end with a single
+`UI: http://127.0.0.1:19070/ui/   invocation <id>` line.
+
 The server keeps no volume, so `docker compose down` resets it.
 
 ## Browser lab (recommended)

@@ -21,7 +21,8 @@ import time
 import urllib.error
 import urllib.request
 
-from demo import ADMIN, AGENT_URI_FOR_SERVER, HERE, INGRESS, QUESTION, STUB, port_open, say, sql, start_agent, start_stub, wait_for
+from demo import (ADMIN, AGENT_URI_FOR_SERVER, HERE, INGRESS, QUESTION, STUB, port_open, say, sql,
+                  start_agent, start_stub, ui_links, wait_for)
 
 FIXED_URI = os.environ.get("FIXED_AGENT_URI", "http://host.docker.internal:9081")
 
@@ -74,6 +75,11 @@ def stop(*procs) -> None:
                 proc.wait()
 
 
+def ok(status: int) -> str:
+    """Green for a 2xx answer, red for a refusal."""
+    return "green" if 200 <= status < 300 else "red"
+
+
 def main() -> None:
     if call("GET", f"{ADMIN}/health")[0] != 200:
         sys.exit(f"Restate admin API not reachable at {ADMIN}. Run: docker compose up -d")
@@ -86,7 +92,7 @@ def main() -> None:
     stub = naive = fixed = None
     stuck = restarted = None
     try:
-        say("== 1. a stuck invocation: naive agent, drifted model")
+        say("== 1. a stuck invocation: naive agent, drifted model", "bold")
         stub = start_stub("drifted")
         naive = start_agent("naive", log)
         _, deployment_a = call("POST", f"{ADMIN}/deployments", {"uri": AGENT_URI_FOR_SERVER, "force": True})
@@ -98,17 +104,17 @@ def main() -> None:
         naive.wait()
         time.sleep(2)
         naive = start_agent("naive", log)
-        say("kill -9 and restart; waiting for the retries to run out")
+        say("kill -9 and restart; waiting for the retries to run out", "bold", "red")
         wait_for(lambda: invocation(stuck).get("status") == "paused", 150, 0.5)
-        say(f"status: {invocation(stuck).get('status')}   model calls so far: {model_calls()}")
+        say(f"status: {invocation(stuck).get('status')}   model calls so far: {model_calls()}", "bold", "red")
 
         say()
-        say("== 2. deploy the fix as a new deployment and resume the paused invocation on it")
+        say("== 2. deploy the fix as a new deployment and resume the paused invocation on it", "bold")
         fixed = start_agent("journaled", log, port=9081)
         _, deployment_b = call("POST", f"{ADMIN}/deployments", {"uri": FIXED_URI, "force": True})
         before = model_calls()
         status, _ = call("PATCH", f"{ADMIN}/invocations/{stuck}/resume?deployment={deployment_b['id']}")
-        say(f"PATCH /invocations/{stuck}/resume?deployment={deployment_b['id']}  ->  {status}")
+        say(f"PATCH /invocations/{stuck}/resume?deployment={deployment_b['id']}  ->  {status}", ok(status))
         failure = {}
         wait_for(lambda: failure.update(invocation(stuck)) or "Difference" in (failure.get("last_failure") or ""), 30, 0.5)
         say(f"pinned deployment: {failure.get('pinned_deployment_id')}   last failure {failure.get('last_failure_error_code')}:")
@@ -116,27 +122,30 @@ def main() -> None:
         say(f"model calls since resume: {model_calls() - before}")
         status, _ = call("PATCH", f"{ADMIN}/invocations/{stuck}/pause")
         wait_for(lambda: invocation(stuck).get("status") == "paused", 20, 0.5)
-        say(f"PATCH pause  ->  {status}; status: {invocation(stuck).get('status')}")
+        say(f"PATCH pause  ->  {status}; status: {invocation(stuck).get('status')}", ok(status))
 
         say()
-        say("== 3. restart it as new on the fixed deployment")
+        say("== 3. restart it as new on the fixed deployment", "bold")
         status, body = call("PATCH", f"{ADMIN}/invocations/{stuck}/restart-as-new")
-        say(f"PATCH restart-as-new while paused  ->  {status} {body}")
+        say(f"PATCH restart-as-new while paused  ->  {status} {body}", ok(status))
         status, _ = call("PATCH", f"{ADMIN}/invocations/{stuck}/kill")
         wait_for(lambda: invocation(stuck).get("status") == "completed", 20, 0.5)
         original = invocation(stuck)
-        say(f"PATCH kill  ->  {status}; original: {original.get('completion_result')} {original.get('completion_failure')}")
+        say(f"PATCH kill  ->  {status}; original: {original.get('completion_result')} {original.get('completion_failure')}", ok(status))
         call("POST", f"{STUB}/reset")
         status, body = call("PATCH", f"{ADMIN}/invocations/{stuck}/restart-as-new")
         restarted = body["new_invocation_id"]
-        say(f"PATCH restart-as-new after kill  ->  {status}   new invocation {restarted}")
+        say(f"PATCH restart-as-new after kill  ->  {status}   new invocation {restarted}", ok(status))
         wait_for(lambda: invocation(restarted).get("status") == "completed", 60, 0.5)
         row = invocation(restarted)
         output = call("GET", f"{INGRESS}/restate/invocation/{restarted}/output")[1]
-        say(f"status: {row.get('status')}   pinned deployment: {row.get('pinned_deployment_id')}   model calls: {model_calls()}")
-        say(f"result: {output}")
-        say("journal of the new invocation:")
+        say(f"status: {row.get('status')}   pinned deployment: {row.get('pinned_deployment_id')}   model calls: {model_calls()}",
+            "bold", "green" if row.get("status") == "completed" else "red")
+        say(f"result: {output}", "green")
+        say("journal of the new invocation:", "bold")
         journal(restarted)
+        ui_links(restarted)
+        say(f"original:    {ADMIN}/ui/invocations/{stuck}", "blue")
     finally:
         # Stopped early (Ctrl-C, the lab page's Stop): an invocation still retrying would reach the
         # next scenario's agent and bill its stub. Kill it, as demo.py does; a paused one stays put.
