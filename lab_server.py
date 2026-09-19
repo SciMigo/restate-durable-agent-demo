@@ -36,6 +36,7 @@ lock = threading.Lock()
 current: subprocess.Popen | None = None
 current_key = ""
 current_log: Path | None = None
+current_started = 0.0
 prepared = False
 
 
@@ -55,7 +56,7 @@ def port_open(port: int) -> bool:
 
 def snapshot() -> dict:
     with lock:
-        proc, key, log = current, current_key, current_log
+        proc, key, log, started = current, current_key, current_log, current_started
     running = proc is not None and proc.poll() is None
     tail = ""
     if log and log.exists():
@@ -64,6 +65,7 @@ def snapshot() -> dict:
             tail = source.read().decode("utf-8", errors="replace")
     return {"restate": restate_ready(), "prepared": prepared,
             "running": running, "scenario": key,
+            "elapsed": round(time.time() - started) if running else None,
             "exitCode": None if running or proc is None else proc.returncode,
             "output": tail}
 
@@ -99,7 +101,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_data(404, b"Not found", "text/plain")
 
     def do_POST(self) -> None:
-        global current, current_key, current_log, prepared
+        global current, current_key, current_log, current_started, prepared
         if not self.local_request():
             return self.send_json(403, {"error": "Open the printed local address."})
         try:
@@ -146,7 +148,7 @@ class Handler(BaseHTTPRequestHandler):
                         current = subprocess.Popen([str(ROOT / ".venv/bin/python"), *args], cwd=ROOT,
                             stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
                             env={**os.environ, "PYTHONUNBUFFERED": "1"}, start_new_session=True)
-                    current_key, current_log = key, log
+                    current_key, current_log, current_started = key, log, time.time()
                 return self.send_json(200, {"message": f"Started exercise {label}. Output updates below."})
             if self.path == "/api/stop":
                 with lock:
